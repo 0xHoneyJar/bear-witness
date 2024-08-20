@@ -39,3 +39,14 @@ The verifier then matches these two datasets within a specified time window, all
 ## Usage
 
 Run the script with the following command:
+
+- `--questName` or `-q`: The name of the quest to check (required)
+- `--timeWindow` or `-t`: The time window in minutes for matching mints and visits (default: 10)
+
+## Output
+
+The script will output the results of the revenue share check, showing matches between onchain mints and website visits within the specified time window.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
