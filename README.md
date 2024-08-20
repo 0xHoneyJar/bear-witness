@@ -40,6 +40,10 @@ The verifier then matches these two datasets within a specified time window, all
 
 Run the script with the following command:
 
+```
+npm start -- --questName "Your Quest Name" --timeWindow 10
+```
+
 - `--questName` or `-q`: The name of the quest to check (required)
 - `--timeWindow` or `-t`: The time window in minutes for matching mints and visits (default: 10)
 
