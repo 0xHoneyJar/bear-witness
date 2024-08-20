@@ -1,0 +1,20 @@
+{"level":"info","message":"Checking revenue share for quest: Your Quest Name","timestamp":"2024-08-20T21:15:17.941Z"}
+{"level":"info","message":"Using time window: 10 minutes","timestamp":"2024-08-20T21:15:17.942Z"}
+{"level":"info","message":"Fetching onchain mints...","timestamp":"2024-08-20T21:15:17.942Z"}
+{"level":"info","message":"Fetched 0 onchain mints","timestamp":"2024-08-20T21:15:20.599Z"}
+{"level":"info","message":"Fetching website visits...","timestamp":"2024-08-20T21:15:20.599Z"}
+{"level":"info","message":"Fetched 0 website visits","timestamp":"2024-08-20T21:15:20.878Z"}
+{"level":"info","message":"Checking for revenue share matches...","timestamp":"2024-08-20T21:15:20.878Z"}
+{"level":"info","message":"Revenue Share Check Results:","timestamp":"2024-08-20T21:15:20.879Z"}
+{"level":"info","message":"[]","timestamp":"2024-08-20T21:15:20.879Z"}
+{"code":"ENOENT","errno":-2,"level":"error","message":"An error occurred during execution: ENOENT: no such file or directory, open '/Users/zksoju/Documents/GitHub/bear-witness/output/Your_Quest_Name_results.json'","path":"/Users/zksoju/Documents/GitHub/bear-witness/output/Your_Quest_Name_results.json","stack":"Error: ENOENT: no such file or directory, open '/Users/zksoju/Documents/GitHub/bear-witness/output/Your_Quest_Name_results.json'\n    at Object.openSync (node:fs:603:3)\n    at Object.writeFileSync (node:fs:2324:35)\n    at main (/Users/zksoju/Documents/GitHub/bear-witness/src/index.ts:252:8)\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)","syscall":"open","timestamp":"2024-08-20T21:15:20.883Z"}
+{"level":"info","message":"Checking revenue share for quest: Your Quest Name","timestamp":"2024-08-20T21:15:49.653Z"}
+{"level":"info","message":"Using time window: 10 minutes","timestamp":"2024-08-20T21:15:49.654Z"}
+{"level":"info","message":"Fetching onchain mints...","timestamp":"2024-08-20T21:15:49.654Z"}
+{"level":"info","message":"Fetched 0 onchain mints","timestamp":"2024-08-20T21:15:50.343Z"}
+{"level":"info","message":"Fetching website visits...","timestamp":"2024-08-20T21:15:50.343Z"}
+{"level":"info","message":"Fetched 0 website visits","timestamp":"2024-08-20T21:15:50.581Z"}
+{"level":"info","message":"Checking for revenue share matches...","timestamp":"2024-08-20T21:15:50.581Z"}
+{"level":"info","message":"Revenue Share Check Results:","timestamp":"2024-08-20T21:15:50.582Z"}
+{"level":"info","message":"[]","timestamp":"2024-08-20T21:15:50.582Z"}
+{"level":"info","message":"Results saved to /Users/zksoju/Documents/GitHub/bear-witness/output/Your_Quest_Name_results.json","timestamp":"2024-08-20T21:15:50.583Z"}

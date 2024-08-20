@@ -1,0 +1,13 @@
+{
+  "GRAPHQL_ENDPOINT": "https://the-honey-jar.squids.live/quest-squid/v/v17/graphql",
+  "IRYS_GRAPHQL_ENDPOINT": "https://testnet-upload.irys.xyz/graphql",
+  "OWNER_ADDRESS": "0x0000000000000000000000000000000000000000",
+  "TIME_WINDOW_MINUTES": 10,
+  "LOGGING": {
+    "LEVEL": "info",
+    "FILE_NAME": "bearwitness.log"
+  },
+  "OUTPUT": {
+    "DIRECTORY": "output"
+  }
+}
