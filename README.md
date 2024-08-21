@@ -6,7 +6,7 @@ This tool allows CubQuest partners to verify revenue sharing for their quests by
 
 The CubQuest RevShare Verifier operates by comparing two sets of data:
 
-1. Website Visits: These are stored on the Irys testnet blockchain. Each visit to a quest page is recorded as a transaction on Irys, providing a tamper-proof log of user activity.
+1. Website Visits: These are stored on the [Irys](https://irys.xyz/) testnet blockchain. Each visit to a quest page is recorded as a transaction on Irys, providing a tamper-proof log of user activity.
 
 2. Onchain Mints: The tool tracks NFT mints that occur on the main blockchain where CubQuest operates.
 
