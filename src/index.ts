@@ -1,10 +1,11 @@
+import chalk from "chalk";
 import dotenv from "dotenv";
 import fs from "fs";
 import fetch from "node-fetch";
 import path from "path";
+import { formatEther, parseEther } from "viem";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
-import chalk from "chalk";
 
 dotenv.config();
 
@@ -26,7 +27,9 @@ function log(level: string, message: string) {
       console.log(chalk.green(`[${timestamp}] SUCCESS: ${message}`));
       break;
     default:
-      console.log(chalk.white(`[${timestamp}] ${level.toUpperCase()}: ${message}`));
+      console.log(
+        chalk.white(`[${timestamp}] ${level.toUpperCase()}: ${message}`)
+      );
   }
 }
 
@@ -41,6 +44,19 @@ interface WebsiteVisit {
   timestamp: number;
   questName: string;
 }
+
+interface PartnershipTier {
+  name: string;
+  fullName: string;
+  percentage: number;
+}
+
+const PARTNERSHIP_TIERS: PartnershipTier[] = [
+  { name: "Platinum", fullName: "Flagship (Platinum)", percentage: 4.2 },
+  { name: "Gold", fullName: "Strategic (Gold)", percentage: 6.9 },
+  { name: "Silver", fullName: "Integration (Silver)", percentage: 10 },
+  { name: "Bronze", fullName: "Ecosystem (Bronze)", percentage: 12.5 },
+];
 
 const GRAPHQL_ENDPOINT = config.GRAPHQL_ENDPOINT;
 const IRYS_GRAPHQL_ENDPOINT = config.IRYS_GRAPHQL_ENDPOINT;
@@ -92,7 +108,7 @@ async function fetchOnchainMints(questName: string): Promise<OnchainMint[]> {
             .filter((step: any) => step.completed)
             .map((step: any) => ({
               address: progress.address,
-              timestamp: parseInt(step.startTimestamp),
+              timestamp: parseInt(step.startTimestamp) * 1000, // Convert to milliseconds
               questName,
             }))
         );
@@ -114,7 +130,7 @@ async function fetchWebsiteVisits(questName: string): Promise<WebsiteVisit[]> {
   let allVisits: WebsiteVisit[] = [];
   let hasNextPage = true;
   let after = null;
-  const first = 100;
+  const limit = 100;
 
   while (hasNextPage) {
     try {
@@ -123,12 +139,13 @@ async function fetchWebsiteVisits(questName: string): Promise<WebsiteVisit[]> {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           query: `
-            query getByOwner($tags: [TagFilter!], $first: Int!, $after: String) {
+            query getByOwner($tags: [TagFilter!], $limit: Int!, $after: String) {
               transactions(
                 owners: ["${OWNER_ADDRESS}"],
                 tags: $tags,
-                first: $first,
-                after: $after
+                limit: $limit,
+                after: $after,
+                order: DESC
               ) {
                 edges {
                   node {
@@ -138,9 +155,9 @@ async function fetchWebsiteVisits(questName: string): Promise<WebsiteVisit[]> {
                       value
                     }
                   }
+                  cursor
                 }
                 pageInfo {
-                  endCursor
                   hasNextPage
                 }
               }
@@ -148,7 +165,7 @@ async function fetchWebsiteVisits(questName: string): Promise<WebsiteVisit[]> {
           `,
           variables: {
             tags: [{ name: "questName", values: [questName] }],
-            first: first,
+            limit: limit,
             after: after,
           },
         }),
@@ -170,7 +187,8 @@ async function fetchWebsiteVisits(questName: string): Promise<WebsiteVisit[]> {
       allVisits = [...allVisits, ...visits];
 
       hasNextPage = data.transactions.pageInfo.hasNextPage;
-      after = data.transactions.pageInfo.endCursor;
+      after =
+        data.transactions.edges[data.transactions.edges.length - 1]?.cursor;
     } catch (error) {
       log("error", `Error fetching website visits: ${error}`);
       hasNextPage = false;
@@ -183,19 +201,26 @@ async function fetchWebsiteVisits(questName: string): Promise<WebsiteVisit[]> {
 function checkRevenueShare(
   mints: OnchainMint[],
   visits: WebsiteVisit[],
-  timeWindow: number
-): any[] {
+  timeWindow: number,
+  ethPrice: bigint,
+  partnershipTier: string
+): any {
+  let totalMatches = 0;
+  const tierInfo = PARTNERSHIP_TIERS.find((tier) => tier.fullName === partnershipTier);
+  const tierPercentage = tierInfo ? tierInfo.percentage : 0;
   const matches: any[] = [];
 
   for (const mint of mints) {
     const relevantVisits = visits.filter(
       (visit) =>
-        visit.address === mint.address &&
+        visit.address.toLowerCase() === mint.address.toLowerCase() &&
         visit.questName === mint.questName &&
-        Math.abs(visit.timestamp - mint.timestamp) <= timeWindow * 60 * 1000
+        BigInt(Math.abs(visit.timestamp - mint.timestamp)) <=
+          BigInt(timeWindow) * 60n * 1000n
     );
 
     if (relevantVisits.length > 0) {
+      totalMatches++;
       matches.push({
         address: mint.address,
         questName: mint.questName,
@@ -205,7 +230,19 @@ function checkRevenueShare(
     }
   }
 
-  return matches;
+  const totalPayout = (ethPrice * BigInt(Math.round(tierPercentage * 100)) * BigInt(totalMatches)) / 10000n;
+
+  return {
+    summary: {
+      questName: mints[0]?.questName || "Unknown",
+      partnershipTier,
+      tierPercentage,
+      totalMatches,
+      ethPricePerItem: formatEther(ethPrice),
+      totalPayout: formatEther(totalPayout),
+    },
+    matches,
+  };
 }
 
 const main = async () => {
@@ -222,15 +259,38 @@ const main = async () => {
       description: "Time window in minutes",
       default: 10,
     })
+    .option("ethPrice", {
+      alias: "e",
+      type: "string",
+      description: "ETH price per item (in ETH)",
+      demandOption: true,
+    })
+    .option("partnershipTier", {
+      alias: "p",
+      type: "string",
+      description: "Partnership tier",
+      choices: PARTNERSHIP_TIERS.map((tier) => tier.name),
+      demandOption: true,
+    })
     .parse();
 
-  const { questName, timeWindow } = argv as {
+  const { questName, timeWindow, ethPrice, partnershipTier } = argv as {
     questName: string;
     timeWindow: number;
+    ethPrice: string;
+    partnershipTier: string;
   };
+
+  const ethPriceBigInt = parseEther(ethPrice);
+  const fullPartnershipTier =
+    PARTNERSHIP_TIERS.find(
+      (tier) => tier.name.toLowerCase() === partnershipTier.toLowerCase()
+    )?.fullName || partnershipTier;
 
   log("info", `Checking revenue share for quest: ${chalk.yellow(questName)}`);
   log("info", `Using time window: ${chalk.yellow(timeWindow)} minutes`);
+  log("info", `ETH price per item: ${chalk.yellow(ethPrice)} ETH`);
+  log("info", `Partnership tier: ${chalk.yellow(fullPartnershipTier)}`);
 
   try {
     log("info", "Fetching onchain mints...");
@@ -239,13 +299,23 @@ const main = async () => {
 
     log("info", "Fetching website visits...");
     const websiteVisits = await fetchWebsiteVisits(questName);
-    log("success", `Fetched ${chalk.green(websiteVisits.length)} website visits`);
+    log(
+      "success",
+      `Fetched ${chalk.green(websiteVisits.length)} website visits`
+    );
 
     log("info", "Checking for revenue share matches...");
-    const results = checkRevenueShare(onchainMints, websiteVisits, timeWindow);
+    const results = checkRevenueShare(
+      onchainMints,
+      websiteVisits,
+      timeWindow,
+      ethPriceBigInt,
+      fullPartnershipTier
+    );
 
     log("success", "Revenue Share Check Results:");
-    console.log(chalk.cyan(JSON.stringify(results, null, 2)));
+    console.log(chalk.cyan(JSON.stringify(results.summary, null, 2)));
+    log("info", `Total matches found: ${results.matches.length}`);
 
     // Create output directory if it doesn't exist
     const outputDir = path.join(__dirname, "..", "output");
@@ -259,7 +329,7 @@ const main = async () => {
       `${questName.replace(/\s+/g, "_")}_results.json`
     );
     fs.writeFileSync(outputPath, JSON.stringify(results, null, 2));
-    log("success", `Results saved to ${chalk.underline(outputPath)}`);
+    log("success", `Full results saved to ${chalk.underline(outputPath)}`);
   } catch (error) {
     log("error", `An error occurred during execution: ${error}`);
   }

@@ -41,15 +41,35 @@ The verifier then matches these two datasets within a specified time window, all
 Run the script with the following command:
 
 ```
-npm start -- --questName "Your Quest Name" --timeWindow 10
+npm start -- --questName "Your Quest Name" --timeWindow 10 --ethPrice "0.1" --partnershipTier "Gold"
 ```
 
 - `--questName` or `-q`: The name of the quest to check (required)
 - `--timeWindow` or `-t`: The time window in minutes for matching mints and visits (default: 10)
+- `--ethPrice` or `-e`: The ETH price per item in ETH (required, use decimal format, e.g., "0.1" for 0.1 ETH)
+- `--partnershipTier` or `-p`: The partnership tier (required, choices: "Flagship (Platinum)", "Strategic (Gold)", "Integration (Silver)", "Ecosystem (Bronze)")
 
 ## Output
 
-The script will output the results of the revenue share check, showing matches between onchain mints and website visits within the specified time window.
+The script will output a summary of the revenue share check in the console, showing:
+
+- Quest name
+- Partnership tier
+- Tier percentage
+- Total number of matches between onchain mints and website visits
+- ETH price per item
+- Total payout amount in ETH
+
+Additionally, a detailed JSON file will be saved in the `output` directory, containing:
+
+1. The summary information
+2. An array of all matches, each including:
+   - Address of the minter
+   - Quest name
+   - Mint timestamp
+   - Relevant website visits
+
+This allows for both a quick overview of the results and access to detailed information if needed.
 
 ## License
 
