@@ -51,25 +51,31 @@ npm start -- --questName "Your Quest Name" --timeWindow 10 --ethPrice "0.1" --pa
 
 ## Output
 
-The script will output a summary of the revenue share check in the console, showing:
+The script will output two summaries of the revenue share check in the console:
+
+1. Based on website visits
+2. Based on off-chain progress
+
+Each summary shows:
 
 - Quest name
 - Partnership tier
 - Tier percentage
-- Total number of matches between onchain mints and website visits
+- Total number of matches
+- Total number of mints
 - ETH price per item
 - Total payout amount in ETH
 
 Additionally, a detailed JSON file will be saved in the `output` directory, containing:
 
-1. The summary information
-2. An array of all matches, each including:
-   - Address of the minter
-   - Quest name
-   - Mint timestamp
-   - Relevant website visits
+1. Website visit results:
+   - The summary information
+   - An array of all matches with website visits
+2. Off-chain progress results:
+   - The summary information
+   - An array of all matches with off-chain progress
 
-This allows for both a quick overview of the results and access to detailed information if needed.
+This allows for a comprehensive overview of revenue share calculations based on both on-chain and off-chain data.
 
 ## License
 

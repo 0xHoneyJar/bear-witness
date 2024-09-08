@@ -6,6 +6,8 @@ import path from "path";
 import { formatEther, parseEther } from "viem";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
+import { supabase } from "./supabase";
+import { Step, StepType, VerifyType } from "./types";
 
 dotenv.config();
 
@@ -37,6 +39,7 @@ interface OnchainMint {
   address: string;
   timestamp: number;
   questName: string;
+  amount: number;
 }
 
 interface WebsiteVisit {
@@ -62,11 +65,14 @@ const GRAPHQL_ENDPOINT = config.GRAPHQL_ENDPOINT;
 const IRYS_GRAPHQL_ENDPOINT = config.IRYS_GRAPHQL_ENDPOINT;
 const OWNER_ADDRESS = config.OWNER_ADDRESS;
 
-async function fetchOnchainMints(questName: string): Promise<OnchainMint[]> {
+async function fetchOnchainMints(
+  questName: string
+): Promise<{ mints: OnchainMint[]; totalMints: number }> {
   let allMints: OnchainMint[] = [];
   let hasMore = true;
   let offset = 0;
   const limit = 1000;
+  let totalMints = 0;
 
   while (hasMore) {
     try {
@@ -88,6 +94,7 @@ async function fetchOnchainMints(questName: string): Promise<OnchainMint[]> {
                   stepNumber
                   completed
                   startTimestamp
+                  progressAmount
                 }
               }
             }
@@ -106,11 +113,16 @@ async function fetchOnchainMints(questName: string): Promise<OnchainMint[]> {
         const mints = data.userQuestProgresses.flatMap((progress: any) =>
           progress.stepProgresses
             .filter((step: any) => step.completed)
-            .map((step: any) => ({
-              address: progress.address,
-              timestamp: parseInt(step.startTimestamp) * 1000, // Convert to milliseconds
-              questName,
-            }))
+            .map((step: any) => {
+              const amount = parseInt(step.progressAmount) || 1;
+              totalMints += amount;
+              return {
+                address: progress.address,
+                timestamp: parseInt(step.startTimestamp) * 1000,
+                questName,
+                amount: amount,
+              };
+            })
         );
         allMints = [...allMints, ...mints];
         offset += limit;
@@ -123,7 +135,7 @@ async function fetchOnchainMints(questName: string): Promise<OnchainMint[]> {
     }
   }
 
-  return allMints;
+  return { mints: allMints, totalMints };
 }
 
 async function fetchWebsiteVisits(questName: string): Promise<WebsiteVisit[]> {
@@ -206,7 +218,10 @@ function checkRevenueShare(
   partnershipTier: string
 ): any {
   let totalMatches = 0;
-  const tierInfo = PARTNERSHIP_TIERS.find((tier) => tier.fullName === partnershipTier);
+  let totalMintAmount = 0;
+  const tierInfo = PARTNERSHIP_TIERS.find(
+    (tier) => tier.fullName === partnershipTier
+  );
   const tierPercentage = tierInfo ? tierInfo.percentage : 0;
   const matches: any[] = [];
 
@@ -221,16 +236,22 @@ function checkRevenueShare(
 
     if (relevantVisits.length > 0) {
       totalMatches++;
+      totalMintAmount += mint.amount;
       matches.push({
         address: mint.address,
         questName: mint.questName,
         mintTimestamp: mint.timestamp,
+        mintAmount: mint.amount,
         relevantVisits,
       });
     }
   }
 
-  const totalPayout = (ethPrice * BigInt(Math.round(tierPercentage * 100)) * BigInt(totalMatches)) / 10000n;
+  const totalPayout =
+    (ethPrice *
+      BigInt(Math.round(tierPercentage * 100)) *
+      BigInt(totalMintAmount)) /
+    10000n;
 
   return {
     summary: {
@@ -238,6 +259,158 @@ function checkRevenueShare(
       partnershipTier,
       tierPercentage,
       totalMatches,
+      totalMintAmount,
+      ethPricePerItem: formatEther(ethPrice),
+      totalPayout: formatEther(totalPayout),
+    },
+    matches,
+  };
+}
+
+export const MISC_STEPS = [
+  StepType.Wait,
+  StepType.Verify,
+  StepType.Logout,
+  StepType.Watch,
+  VerifyType.Farcaster,
+  VerifyType.Onchain,
+  VerifyType.Manual,
+  VerifyType.Referrals,
+];
+
+function getVerifiableStepIndices(steps: Step[]): number[] {
+  const orGroupIndices = steps
+    .map((step, index) => (step.orGroup ? index + 1 : null))
+    .filter((index): index is number => index !== null);
+
+  const verifiableIndices = steps.reduce(
+    (verifiableIndices: number[], step, index) => {
+      const stepIndex = index + 1; // 1-based index
+      const isVerifiableStep =
+        !MISC_STEPS.includes(step.type as StepType) &&
+        step.type !== StepType.Mint &&
+        step.type !== StepType.Onchain &&
+        (!step.verificationType ||
+          !MISC_STEPS.includes(step.verificationType as VerifyType));
+
+      if (isVerifiableStep && !orGroupIndices.includes(stepIndex)) {
+        verifiableIndices.push(stepIndex);
+      }
+      return verifiableIndices;
+    },
+    []
+  );
+
+  return verifiableIndices;
+}
+
+interface Quest {
+  id: string;
+  title: string;
+  steps: Step[];
+  tracked_steps: number[];
+}
+
+async function fetchQuestDetails(questTitle: string): Promise<Quest | null> {
+  const { data, error } = await supabase
+    .from("quests")
+    .select("*")
+    .eq("title", questTitle)
+    .single();
+
+  if (error) {
+    log("error", `Error fetching quest details: ${error.message}`);
+    return null;
+  }
+
+  const quest = data as Quest;
+  quest.tracked_steps = getVerifiableStepIndices(quest.steps);
+
+  return quest;
+}
+
+async function fetchAllOffchainProgress(
+  quest: Quest,
+  votedFor?: string
+): Promise<string[]> {
+  let allRows: string[] = [];
+  let from = 0;
+  const limit = 10000;
+
+  while (true) {
+    let query = supabase
+      .from("quest_progress")
+      .select("address")
+      .range(from, from + limit - 1)
+      .eq("quest_name", quest.title)
+      .contains(
+        "tracked_steps",
+        Object.fromEntries(
+          quest.tracked_steps.map((stepIndex) => [stepIndex, true])
+        )
+      );
+
+    if (votedFor) {
+      query = query.eq("voted_for", votedFor);
+    }
+
+    const { data, error } = await query;
+    if (error || !Array.isArray(data) || data.length === 0) break;
+
+    allRows = allRows.concat(data.map((row) => row.address));
+    from += limit;
+    if (data.length < limit) break;
+  }
+
+  return allRows;
+}
+
+async function checkOffchainRevShare(
+  mints: OnchainMint[],
+  quest: Quest,
+  ethPrice: bigint,
+  partnershipTier: string,
+  votedFor?: string
+): Promise<any> {
+  let totalMatches = 0;
+  let totalMintAmount = 0;
+  const tierInfo = PARTNERSHIP_TIERS.find(
+    (tier) => tier.fullName === partnershipTier
+  );
+  const tierPercentage = tierInfo ? tierInfo.percentage : 0;
+  const matches: any[] = [];
+
+  // Fetch off-chain progress
+  const offchainProgress = await fetchAllOffchainProgress(quest, votedFor);
+
+  for (const mint of mints) {
+    let isMatch = offchainProgress.includes(mint.address.toLowerCase());
+
+    if (isMatch) {
+      totalMatches++;
+      totalMintAmount += mint.amount;
+      matches.push({
+        address: mint.address,
+        questName: mint.questName,
+        mintTimestamp: mint.timestamp,
+        mintAmount: mint.amount,
+      });
+    }
+  }
+
+  const totalPayout =
+    (ethPrice *
+      BigInt(Math.round(tierPercentage * 100)) *
+      BigInt(totalMintAmount)) /
+    10000n;
+
+  return {
+    summary: {
+      questName: quest.title,
+      partnershipTier,
+      tierPercentage,
+      totalMatches,
+      totalMintAmount,
       ethPricePerItem: formatEther(ethPrice),
       totalPayout: formatEther(totalPayout),
     },
@@ -293,9 +466,29 @@ const main = async () => {
   log("info", `Partnership tier: ${chalk.yellow(fullPartnershipTier)}`);
 
   try {
+    log("info", "Fetching quest details...");
+    const questDetails = await fetchQuestDetails(questName);
+    if (!questDetails) {
+      log("error", `Quest "${questName}" not found`);
+      return;
+    }
+    log(
+      "success",
+      `Fetched details for quest: ${chalk.yellow(questDetails.title)}`
+    );
+
     log("info", "Fetching onchain mints...");
-    const onchainMints = await fetchOnchainMints(questName);
-    log("success", `Fetched ${chalk.green(onchainMints.length)} onchain mints`);
+    const { mints: onchainMints, totalMints } = await fetchOnchainMints(
+      questName
+    );
+    log(
+      "success",
+      `Fetched ${chalk.green(
+        onchainMints.length
+      )} onchain mint transactions with a total of ${chalk.green(
+        totalMints
+      )} mints`
+    );
 
     log("info", "Fetching website visits...");
     const websiteVisits = await fetchWebsiteVisits(questName);
@@ -304,8 +497,8 @@ const main = async () => {
       `Fetched ${chalk.green(websiteVisits.length)} website visits`
     );
 
-    log("info", "Checking for revenue share matches...");
-    const results = checkRevenueShare(
+    log("info", "Checking for revenue share matches with website visits...");
+    const websiteResults = checkRevenueShare(
       onchainMints,
       websiteVisits,
       timeWindow,
@@ -313,9 +506,27 @@ const main = async () => {
       fullPartnershipTier
     );
 
-    log("success", "Revenue Share Check Results:");
-    console.log(chalk.cyan(JSON.stringify(results.summary, null, 2)));
-    log("info", `Total matches found: ${results.matches.length}`);
+    log(
+      "info",
+      "Checking for revenue share matches with off-chain progress..."
+    );
+    const offchainResults = await checkOffchainRevShare(
+      onchainMints,
+      questDetails,
+      ethPriceBigInt,
+      fullPartnershipTier
+    );
+
+    log("success", "Revenue Share Check Results (Website Visits):");
+    console.log(chalk.cyan(JSON.stringify(websiteResults.summary, null, 2)));
+    log("info", `Total mint amount: ${websiteResults.summary.totalMintAmount}`);
+
+    log("success", "Revenue Share Check Results (Off-chain Progress):");
+    console.log(chalk.cyan(JSON.stringify(offchainResults.summary, null, 2)));
+    log(
+      "info",
+      `Total mint amount: ${offchainResults.summary.totalMintAmount}`
+    );
 
     // Create output directory if it doesn't exist
     const outputDir = path.join(__dirname, "..", "output");
@@ -328,7 +539,17 @@ const main = async () => {
       outputDir,
       `${questName.replace(/\s+/g, "_")}_results.json`
     );
-    fs.writeFileSync(outputPath, JSON.stringify(results, null, 2));
+    fs.writeFileSync(
+      outputPath,
+      JSON.stringify(
+        {
+          websiteResults,
+          offchainResults,
+        },
+        null,
+        2
+      )
+    );
     log("success", `Full results saved to ${chalk.underline(outputPath)}`);
   } catch (error) {
     log("error", `An error occurred during execution: ${error}`);
