@@ -1,16 +1,14 @@
-# CubQuest RevShare Verifier
+# RevShare and Delegation Verifier
 
-This tool allows CubQuest partners to verify revenue sharing for their quests by checking onchain mints against website visits.
+This tool allows CubQuest partners to verify revenue sharing for their quests and check delegation referrals.
 
 ## How It Works
 
-The CubQuest RevShare Verifier operates by comparing two sets of data:
+The tool provides two main functionalities:
 
-1. Website Visits: These are stored on the [Irys](https://irys.xyz/) testnet blockchain. Each visit to a quest page is recorded as a transaction on Irys, providing a tamper-proof log of user activity.
-
-2. Onchain Mints: The tool tracks NFT mints that occur on the main blockchain where CubQuest operates.
-
-The verifier then matches these two datasets within a specified time window, allowing partners to confirm that mints are correctly attributed to their quest visits.
+1. RevShare Verification: Compares onchain mints against website visits and off-chain progress.
+   - Website visits are tracked on the Irys blockchain, ensuring tamper-proof logging of user activity.
+2. Delegation Referral Check: Analyzes delegation events for a given referrer within a specified date range.
 
 ## Prerequisites
 
@@ -22,8 +20,8 @@ The verifier then matches these two datasets within a specified time window, all
 1. Clone this repository:
 
    ```
-   git clone https://github.com/your-username/cubquest-revshare-verifier.git
-   cd cubquest-revshare-verifier
+   git clone https://github.com/your-username/cubquest-verifier.git
+   cd cubquest-verifier
    ```
 
 2. Install dependencies:
@@ -38,6 +36,10 @@ The verifier then matches these two datasets within a specified time window, all
 
 ## Usage
 
+The tool supports two commands: `revshare` and `delegation`.
+
+### RevShare Check
+
 Run the script with the following command:
 
 ```
@@ -48,6 +50,18 @@ npm start -- --questName "Your Quest Name" --timeWindow 10 --ethPrice "0.1" --pa
 - `--timeWindow` or `-t`: The time window in minutes for matching mints and visits (default: 10)
 - `--ethPrice` or `-e`: The ETH price per item in ETH (required, use decimal format, e.g., "0.1" for 0.1 ETH)
 - `--partnershipTier` or `-p`: The partnership tier (required, choices: "Flagship (Platinum)", "Strategic (Gold)", "Integration (Silver)", "Ecosystem (Bronze)")
+
+### Delegation Check
+
+Run the script with the following command:
+
+```
+npm start -- --referrer "Referrer Address" --startDate "YYYY-MM-DD" --endDate "YYYY-MM-DD"
+```
+
+- `--referrer` or `-r`: The address of the referrer (required)
+- `--startDate` or `-s`: The start date for the check (optional, YYYY-MM-DD format)
+- `--endDate` or `-e`: The end date for the check (optional, YYYY-MM-DD format)
 
 ## Output
 

@@ -22,3 +22,29 @@ export enum VerifyType {
   Referrals = "Referrals",
   // Add other verification types as needed
 }
+
+export interface PartnershipTier {
+  name: string;
+  fullName: string;
+  percentage: number;
+}
+
+export interface OnchainMint {
+  address: string;
+  timestamp: number;
+  questName: string;
+  amount: number;
+}
+
+export interface WebsiteVisit {
+  address: string;
+  timestamp: number;
+  questName: string;
+}
+
+export interface Quest {
+  id: string;
+  title: string;
+  steps: any[]; // Replace 'any' with a more specific type if available
+  tracked_steps: number[];
+}
