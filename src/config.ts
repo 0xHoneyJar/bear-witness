@@ -7,3 +7,4 @@ const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 export const GRAPHQL_ENDPOINT = config.GRAPHQL_ENDPOINT;
 export const IRYS_GRAPHQL_ENDPOINT = config.IRYS_GRAPHQL_ENDPOINT;
 export const OWNER_ADDRESS = config.OWNER_ADDRESS;
+export const INTERNAL_GRAPHQL_ENDPOINT = config.INTERNAL_GRAPHQL_ENDPOINT;

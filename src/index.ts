@@ -42,6 +42,7 @@ interface RevShareArgs {
 
 interface DelegationArgs {
   referrer: string;
+  timeWindow: number;
   startDate?: string;
   endDate?: string;
 }
@@ -159,19 +160,40 @@ const main = async () => {
           description: "End date for the check (YYYY-MM-DD)",
           demandOption: false,
         },
+        timeWindow: {
+          alias: "t",
+          type: "number",
+          description: "Time window in minutes for matching delegations",
+          default: 60,
+        },
       },
       handler: async (argv) => {
-        const { referrer, startDate, endDate } =
+        const { referrer, startDate, endDate, timeWindow } =
           argv as unknown as DelegationArgs;
-        log("info", `Checking delegation referrals for: ${chalk.yellow(referrer)}`);
+        log(
+          "info",
+          `Checking delegation referrals for: ${chalk.yellow(referrer)}`
+        );
         if (startDate && endDate) {
-          log("info", `Date range: ${chalk.yellow(startDate)} to ${chalk.yellow(endDate)}`);
+          log(
+            "info",
+            `Date range: ${chalk.yellow(startDate)} to ${chalk.yellow(endDate)}`
+          );
         } else {
-          log("info", "Fetching all delegation referrals (no date range specified)");
+          log(
+            "info",
+            "Fetching all delegation referrals (no date range specified)"
+          );
         }
+        log("info", `Using time window: ${chalk.yellow(timeWindow)} minutes`);
 
         try {
-          const results = await checkDelegation(referrer, startDate, endDate);
+          const results = await checkDelegation(
+            referrer,
+            timeWindow,
+            startDate,
+            endDate
+          );
           log("success", "Delegation Referral Check Results:");
           console.log(chalk.cyan(JSON.stringify(results.summary, null, 2)));
 
