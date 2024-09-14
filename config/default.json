@@ -1,6 +1,7 @@
 {
   "GRAPHQL_ENDPOINT": "https://the-honey-jar.squids.live/quest-squid/graphql",
   "IRYS_GRAPHQL_ENDPOINT": "https://uploader.irys.xyz/graphql",
+  "INTERNAL_GRAPHQL_ENDPOINT": "https://the-honey-jar.squids.live/internal-squid/graphql",
   "OWNER_ADDRESS": "0x16B58D5e5f78a85463fa6D7EcFf1aa010ab37E97",
   "LOGGING": {
     "LEVEL": "info",

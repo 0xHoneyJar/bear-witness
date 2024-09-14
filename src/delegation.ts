@@ -273,8 +273,12 @@ function matchDelegations(
 ): VerifiedDelegation[] {
   let queueEvents = onchainDelegations.filter((e) => e.type === "queue");
   let activateEvents = onchainDelegations.filter((e) => e.type === "activate");
-  let offchainQueue = offchainDelegations.filter((od) => od.type === "queue_boost");
-  let offchainActivate = offchainDelegations.filter((od) => od.type === "activate_boost");
+  let offchainQueue = offchainDelegations.filter(
+    (od) => od.type === "queue_boost"
+  );
+  let offchainActivate = offchainDelegations.filter(
+    (od) => od.type === "activate_boost"
+  );
 
   console.log(`Onchain queue events: ${queueEvents.length}`);
   console.log(`Onchain activate events: ${activateEvents.length}`);
@@ -285,33 +289,56 @@ function matchDelegations(
 
   for (let i = 0; i < offchainQueue.length; i++) {
     const offchainQueueEvent = offchainQueue[i];
-    const matchingOnchainQueue = findClosestMatchingEvent(queueEvents, offchainQueueEvent, timeWindow);
+    const matchingOnchainQueue = findClosestMatchingEvent(
+      queueEvents,
+      offchainQueueEvent,
+      timeWindow
+    );
     if (!matchingOnchainQueue) {
-      console.log(`No matching onchain queue event found for address: ${offchainQueueEvent.address}`);
+      console.log(
+        `No matching onchain queue event found for address: ${offchainQueueEvent.address}`
+      );
       continue;
     }
 
     // Check if amounts are the same
     if (BigInt(offchainQueueEvent.quantity) !== matchingOnchainQueue.amount) {
-      console.log(`Amount mismatch for queue event: ${offchainQueueEvent.address}`);
+      console.log(
+        `Amount mismatch for queue event: ${offchainQueueEvent.address}`
+      );
       continue;
     }
 
-    const matchingOffchainActivates = findMatchingOffchainActivate(offchainActivate, offchainQueueEvent);
+    const matchingOffchainActivates = findMatchingOffchainActivate(
+      offchainActivate,
+      offchainQueueEvent
+    );
     if (matchingOffchainActivates.length === 0) {
-      console.log(`No matching offchain activate events found for address: ${offchainQueueEvent.address}`);
+      console.log(
+        `No matching offchain activate events found for address: ${offchainQueueEvent.address}`
+      );
       continue;
     }
 
     for (const matchingOffchainActivate of matchingOffchainActivates) {
-      const matchingOnchainActivate = findClosestMatchingEvent(activateEvents, matchingOffchainActivate, timeWindow);
+      const matchingOnchainActivate = findClosestMatchingEvent(
+        activateEvents,
+        matchingOffchainActivate,
+        timeWindow
+      );
       if (!matchingOnchainActivate) {
-        console.log(`No matching onchain activate event found for address: ${offchainQueueEvent.address}`);
+        console.log(
+          `No matching onchain activate event found for address: ${offchainQueueEvent.address}`
+        );
         continue;
       }
 
-      if (isValidDelegationPair(matchingOnchainQueue, matchingOnchainActivate)) {
-        console.log(`Valid delegation pair found for address: ${offchainQueueEvent.address}`);
+      if (
+        isValidDelegationPair(matchingOnchainQueue, matchingOnchainActivate)
+      ) {
+        console.log(
+          `Valid delegation pair found for address: ${offchainQueueEvent.address}`
+        );
         verifiedDelegations.push(
           createVerifiedDelegation(
             offchainQueueEvent,
@@ -324,12 +351,18 @@ function matchDelegations(
         // Remove matched events from the original lists
         offchainQueue.splice(i, 1);
         i--; // Adjust index since we removed an element
-        offchainActivate = offchainActivate.filter(e => e !== matchingOffchainActivate);
-        queueEvents = queueEvents.filter(e => e !== matchingOnchainQueue);
-        activateEvents = activateEvents.filter(e => e !== matchingOnchainActivate);
+        offchainActivate = offchainActivate.filter(
+          (e) => e !== matchingOffchainActivate
+        );
+        queueEvents = queueEvents.filter((e) => e !== matchingOnchainQueue);
+        activateEvents = activateEvents.filter(
+          (e) => e !== matchingOnchainActivate
+        );
         break; // Move to the next offchain queue event
       } else {
-        console.log(`Invalid delegation pair for address: ${offchainQueueEvent.address}`);
+        console.log(
+          `Invalid delegation pair for address: ${offchainQueueEvent.address}`
+        );
       }
     }
   }
@@ -350,8 +383,9 @@ function findClosestMatchingEvent(
 
   if (matchingEvents.length === 0) return undefined;
 
-  return matchingEvents.reduce((closest, current) => 
-    Math.abs(current.timestamp - offchainEvent.timestamp) < Math.abs(closest.timestamp - offchainEvent.timestamp)
+  return matchingEvents.reduce((closest, current) =>
+    Math.abs(current.timestamp - offchainEvent.timestamp) <
+    Math.abs(closest.timestamp - offchainEvent.timestamp)
       ? current
       : closest
   );
