@@ -56,7 +56,7 @@ npm start -- --questName "Your Quest Name" --timeWindow 10 --ethPrice "0.1" --pa
 Run the script with the following command:
 
 ```
-npm start -- --referrer "Referrer Address" --startDate "YYYY-MM-DD" --endDate "YYYY-MM-DD"
+npm start -- delegation --referrer "Referrer Address" --startDate "YYYY-MM-DD" --endDate "YYYY-MM-DD"
 ```
 
 - `--referrer` or `-r`: The address of the referrer (required)

@@ -5,6 +5,7 @@ import {
   IRYS_GRAPHQL_ENDPOINT,
   OWNER_ADDRESS,
 } from "./config";
+import BigNumber from "bignumber.js";
 
 interface OffchainDelegation {
   referrer: string;
@@ -53,7 +54,6 @@ export async function checkDelegation(
 
   console.log(`Fetching onchain delegations for referrer: ${referrer}`);
   const onchainDelegations = await fetchOnchainDelegations(
-    referrer,
     startTimestamp,
     endTimestamp
   );
@@ -83,7 +83,7 @@ async function fetchOffchainDelegations(
   let allDelegations: OffchainDelegation[] = [];
   let hasNextPage = true;
   let after = null;
-  const limit = 100;
+  const limit = 1000;
 
   while (hasNextPage) {
     try {
@@ -119,7 +119,7 @@ async function fetchOffchainDelegations(
           variables: {
             tags: [
               { name: "event", values: ["queue_boost", "activate_boost"] },
-              // { name: "referrer", values: [referrer] },
+              { name: "referrer", values: [referrer] },
             ],
             limit: limit,
             after: after,
@@ -170,7 +170,6 @@ async function fetchOffchainDelegations(
 }
 
 async function fetchOnchainDelegations(
-  referrer: string,
   startDate?: number,
   endDate?: number
 ): Promise<OnchainDelegation[]> {
@@ -181,11 +180,12 @@ async function fetchOnchainDelegations(
 
   while (hasMore) {
     const query = `
-      query GetDelegationEvents($limit: Int!, $offset: Int!) {
+      query GetDelegationEvents($limit: Int!, $offset: Int!, $startTimestamp: BigInt!, $endTimestamp: BigInt!) {
         queueBoosts(
           limit: $limit
           offset: $offset
           orderBy: timestamp_ASC
+          where: {timestamp_gte: $startTimestamp, timestamp_lte: $endTimestamp}
         ) {
           user
           validator
@@ -196,6 +196,7 @@ async function fetchOnchainDelegations(
           limit: $limit
           offset: $offset
           orderBy: timestamp_ASC
+          where: {timestamp_gte: $startTimestamp, timestamp_lte: $endTimestamp}
         ) {
           user
           validator
@@ -214,41 +215,54 @@ async function fetchOnchainDelegations(
           variables: {
             limit,
             offset,
-            startTimestamp: startDate,
-            endTimestamp: endDate,
+            startTimestamp: startDate || 0,
+            endTimestamp: endDate || Math.floor(Date.now() / 1000),
           },
         }),
       });
 
-      const { data } = (await response.json()) as any;
+      const responseData = (await response.json()) as any;
 
-      const queueEvents: OnchainDelegation[] = data.queueBoosts.map(
+      if (responseData.errors) {
+        console.error("GraphQL errors:", responseData.errors);
+        throw new Error("GraphQL query failed");
+      }
+
+      if (!responseData.data) {
+        console.error("Unexpected response structure:", responseData);
+        throw new Error("Unexpected response structure");
+      }
+
+      const { data } = responseData;
+
+      const queueEvents: OnchainDelegation[] = (data.queueBoosts || []).map(
         (event: any) => ({
           ...event,
           amount: BigInt(event.amount),
+          timestamp: Number(event.timestamp),
           type: "queue",
         })
       );
 
-      const activateEvents: OnchainDelegation[] = data.activateBoosts.map(
-        (event: any) => ({
-          ...event,
-          amount: BigInt(event.amount),
-          type: "activate",
-        })
-      );
+      const activateEvents: OnchainDelegation[] = (
+        data.activateBoosts || []
+      ).map((event: any) => ({
+        ...event,
+        amount: BigInt(event.amount),
+        timestamp: Number(event.timestamp),
+        type: "activate",
+      }));
 
       const newDelegations = [...queueEvents, ...activateEvents];
       allDelegations = [...allDelegations, ...newDelegations];
 
       if (newDelegations.length < limit * 2) {
-        // We're querying two types, so we multiply the limit by 2
         hasMore = false;
       } else {
         offset += limit;
       }
     } catch (error) {
-      console.error(`Error fetching onchain delegations: ${error}`);
+      console.error(`Error fetching onchain delegations:`, error);
       hasMore = false;
     }
   }
@@ -280,32 +294,32 @@ function matchDelegations(
     (od) => od.type === "activate_boost"
   );
 
-  console.log(`Onchain queue events: ${queueEvents.length}`);
-  console.log(`Onchain activate events: ${activateEvents.length}`);
-  console.log(`Offchain queue events: ${offchainQueue.length}`);
-  console.log(`Offchain activate events: ${offchainActivate.length}`);
+  // Sort events by timestamp for more efficient matching
+  queueEvents.sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
+  offchainQueue.sort((a, b) => a.timestamp - b.timestamp);
 
   const verifiedDelegations: VerifiedDelegation[] = [];
 
   for (let i = 0; i < offchainQueue.length; i++) {
     const offchainQueueEvent = offchainQueue[i];
+    if (!offchainQueueEvent.address) {
+      continue;
+    }
+
     const matchingOnchainQueue = findClosestMatchingEvent(
       queueEvents,
       offchainQueueEvent,
       timeWindow
     );
+
     if (!matchingOnchainQueue) {
-      console.log(
-        `No matching onchain queue event found for address: ${offchainQueueEvent.address}`
-      );
       continue;
     }
 
-    // Check if amounts are the same
-    if (BigInt(offchainQueueEvent.quantity) !== matchingOnchainQueue.amount) {
-      console.log(
-        `Amount mismatch for queue event: ${offchainQueueEvent.address}`
-      );
+    // Check if amounts are similar (allow for larger discrepancies)
+    const offchainAmount = new BigNumber(offchainQueueEvent.quantity);
+    const onchainAmount = new BigNumber(matchingOnchainQueue.amount.toString());
+    if (!offchainAmount.isEqualTo(onchainAmount)) {
       continue;
     }
 
@@ -314,9 +328,6 @@ function matchDelegations(
       offchainQueueEvent
     );
     if (matchingOffchainActivates.length === 0) {
-      console.log(
-        `No matching offchain activate events found for address: ${offchainQueueEvent.address}`
-      );
       continue;
     }
 
@@ -327,18 +338,12 @@ function matchDelegations(
         timeWindow
       );
       if (!matchingOnchainActivate) {
-        console.log(
-          `No matching onchain activate event found for address: ${offchainQueueEvent.address}`
-        );
         continue;
       }
 
       if (
         isValidDelegationPair(matchingOnchainQueue, matchingOnchainActivate)
       ) {
-        console.log(
-          `Valid delegation pair found for address: ${offchainQueueEvent.address}`
-        );
         verifiedDelegations.push(
           createVerifiedDelegation(
             offchainQueueEvent,
@@ -359,10 +364,6 @@ function matchDelegations(
           (e) => e !== matchingOnchainActivate
         );
         break; // Move to the next offchain queue event
-      } else {
-        console.log(
-          `Invalid delegation pair for address: ${offchainQueueEvent.address}`
-        );
       }
     }
   }
@@ -375,20 +376,57 @@ function findClosestMatchingEvent(
   offchainEvent: OffchainDelegation,
   timeWindow: number
 ): OnchainDelegation | undefined {
-  const matchingEvents = events.filter(
-    (e) =>
-      e.user.toLowerCase() === offchainEvent.address.toLowerCase() &&
-      Math.abs(e.timestamp - offchainEvent.timestamp) <= timeWindow * 60
-  );
+  const extendedTimeWindow = timeWindow * 60;
+  const normalizedOffchainTimestamp = Math.floor(
+    offchainEvent.timestamp / 1000
+  ); // Normalize to seconds if it's in milliseconds
+  const offchainAmount = new BigNumber(offchainEvent.quantity);
 
-  if (matchingEvents.length === 0) return undefined;
+  const matchingEvents = events.filter((e) => {
+    const normalizedOnchainTimestamp = Number(e.timestamp);
+    const timeDifference = Math.abs(
+      normalizedOnchainTimestamp - normalizedOffchainTimestamp
+    );
+    const addressMatch =
+      e.user?.toLowerCase() === offchainEvent.address?.toLowerCase();
+    const onchainAmount = new BigNumber(e.amount.toString());
+    const amountDifference = offchainAmount
+      .minus(onchainAmount)
+      .abs()
+      .dividedBy(offchainAmount);
 
-  return matchingEvents.reduce((closest, current) =>
-    Math.abs(current.timestamp - offchainEvent.timestamp) <
-    Math.abs(closest.timestamp - offchainEvent.timestamp)
-      ? current
-      : closest
-  );
+    return (
+      (timeDifference <= extendedTimeWindow &&
+        amountDifference.isLessThanOrEqualTo(0.1)) ||
+      addressMatch
+    );
+  });
+
+  if (matchingEvents.length === 0) {
+    return undefined;
+  }
+
+  return matchingEvents.reduce((closest, current) => {
+    const currentDiff = Math.abs(
+      Number(current.timestamp) - normalizedOffchainTimestamp
+    );
+    const closestDiff = Math.abs(
+      Number(closest.timestamp) - normalizedOffchainTimestamp
+    );
+    const currentAmountDiff = offchainAmount
+      .minus(new BigNumber(current.amount.toString()))
+      .abs();
+    const closestAmountDiff = offchainAmount
+      .minus(new BigNumber(closest.amount.toString()))
+      .abs();
+
+    if (currentDiff === closestDiff) {
+      return currentAmountDiff.isLessThan(closestAmountDiff)
+        ? current
+        : closest;
+    }
+    return currentDiff < closestDiff ? current : closest;
+  });
 }
 
 function isValidDelegationPair(

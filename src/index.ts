@@ -164,7 +164,7 @@ const main = async () => {
           alias: "t",
           type: "number",
           description: "Time window in minutes for matching delegations",
-          default: 60,
+          default: 10,
         },
       },
       handler: async (argv) => {
