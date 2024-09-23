@@ -43,20 +43,22 @@ The tool supports two commands: `revshare` and `delegation`.
 Run the script with the following command:
 
 ```
-npm start -- --questName "Your Quest Name" --timeWindow 10 --ethPrice "0.1" --partnershipTier "Gold"
+npm start revshare -- --questName "Your Quest Name" --timeWindow 10 --ethPrice "0.1" --partnershipTier "Gold" [--onchainOnly] [--amountIncludesPrice]
 ```
 
 - `--questName` or `-q`: The name of the quest to check (required)
 - `--timeWindow` or `-t`: The time window in minutes for matching mints and visits (default: 10)
 - `--ethPrice` or `-e`: The ETH price per item in ETH (required, use decimal format, e.g., "0.1" for 0.1 ETH)
 - `--partnershipTier` or `-p`: The partnership tier (required, choices: "Flagship (Platinum)", "Strategic (Gold)", "Integration (Silver)", "Ecosystem (Bronze)")
+- `--onchainOnly` or `-o`: Only check against on-chain data, skipping the off-chain progress check (optional, default: false)
+- `--amountIncludesPrice` or `-a`: Indicates if the mint amount already includes the ETH price (optional, default: false)
 
 ### Delegation Check
 
 Run the script with the following command:
 
 ```
-npm start -- delegation --referrer "Referrer Address" --startDate "YYYY-MM-DD" --endDate "YYYY-MM-DD"
+npm start delegation -- --referrer "Referrer Address" --startDate "YYYY-MM-DD" --endDate "YYYY-MM-DD"
 ```
 
 - `--referrer` or `-r`: The address of the referrer (required)
@@ -77,6 +79,7 @@ Each summary shows:
 - Tier percentage
 - Total number of matches
 - Total number of mints
+- Total mint amount in ETH
 - ETH price per item
 - Total payout amount in ETH
 

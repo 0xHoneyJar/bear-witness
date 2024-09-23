@@ -38,6 +38,8 @@ interface RevShareArgs {
   timeWindow: number;
   ethPrice: string;
   partnershipTier: string;
+  onchainOnly: boolean;
+  amountIncludesPrice: boolean; // New flag
 }
 
 interface DelegationArgs {
@@ -78,10 +80,29 @@ const main = async () => {
           choices: PARTNERSHIP_TIERS.map((tier) => tier.name),
           demandOption: true,
         },
+        onchainOnly: {
+          alias: "o",
+          type: "boolean",
+          description:
+            "Only check against on-chain data (skip off-chain check)",
+          default: false,
+        },
+        amountIncludesPrice: {
+          alias: "a",
+          type: "boolean",
+          description: "Indicates if the mint amount includes the ETH price",
+          default: false,
+        },
       },
       handler: async (argv) => {
-        const { questName, timeWindow, ethPrice, partnershipTier } =
-          argv as unknown as RevShareArgs;
+        const {
+          questName,
+          timeWindow,
+          ethPrice,
+          partnershipTier,
+          onchainOnly,
+          amountIncludesPrice,
+        } = argv as unknown as RevShareArgs;
 
         log(
           "info",
@@ -90,16 +111,30 @@ const main = async () => {
         log("info", `Using time window: ${chalk.yellow(timeWindow)} minutes`);
         log("info", `ETH price per item: ${chalk.yellow(ethPrice)} ETH`);
         log("info", `Partnership tier: ${chalk.yellow(partnershipTier)}`);
+        log(
+          "info",
+          `On-chain only: ${chalk.yellow(onchainOnly ? "Yes" : "No")}`
+        );
+        log(
+          "info",
+          `Amount includes price: ${chalk.yellow(amountIncludesPrice ? "Yes" : "No")}`
+        );
 
         try {
           const results = await checkRevShare(
             questName,
             timeWindow,
             ethPrice,
-            partnershipTier
+            partnershipTier,
+            onchainOnly,
+            amountIncludesPrice
           );
 
-          log("success", "Revenue Share Check Results (Website Visits):");
+          if (onchainOnly) {
+            log("success", "Revenue Share Check Results (On-chain Only):");
+          } else {
+            log("success", "Revenue Share Check Results (Website Visits):");
+          }
           console.log(
             chalk.cyan(JSON.stringify(results.websiteResults.summary, null, 2))
           );
@@ -108,14 +143,24 @@ const main = async () => {
             `Total mint amount: ${results.websiteResults.summary.totalMintAmount}`
           );
 
-          log("success", "Revenue Share Check Results (Off-chain Progress):");
-          console.log(
-            chalk.cyan(JSON.stringify(results.offchainResults.summary, null, 2))
-          );
-          log(
-            "info",
-            `Total mint amount: ${results.offchainResults.summary.totalMintAmount}`
-          );
+          if (!onchainOnly && results.offchainResults) {
+            log("success", "Revenue Share Check Results (Off-chain Progress):");
+            console.log(
+              chalk.cyan(
+                JSON.stringify(
+                  (results.offchainResults as any).summary,
+                  null,
+                  2
+                )
+              )
+            );
+            log(
+              "info",
+              `Total mint amount: ${
+                (results.offchainResults as any).summary.totalMintAmount
+              }`
+            );
+          }
 
           // Create output directory if it doesn't exist
           const outputDir = path.join(__dirname, "..", "output");
