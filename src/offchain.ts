@@ -1,10 +1,22 @@
 import fetch from "node-fetch";
-import { formatEther, parseEther } from "viem";
-import { OnchainMint, Quest, WebsiteVisit, Step, StepType, VerifyType } from "./types";
+import {
+  GRAPHQL_ENDPOINT,
+  IRYS_GRAPHQL_ENDPOINT,
+  OWNER_ADDRESS,
+} from "./config";
 import { supabase } from "./supabase";
-import { GRAPHQL_ENDPOINT, IRYS_GRAPHQL_ENDPOINT, OWNER_ADDRESS } from "./config";
+import {
+  OnchainMint,
+  Quest,
+  Step,
+  StepType,
+  VerifyType,
+  WebsiteVisit,
+} from "./types";
 
-export async function fetchOnchainMints(questName: string): Promise<{ mints: OnchainMint[], totalMints: number }> {
+export async function fetchOnchainMints(
+  questName: string
+): Promise<{ mints: OnchainMint[]; totalMints: number }> {
   let allMints: OnchainMint[] = [];
   let hasMore = true;
   let offset = 0;
@@ -18,26 +30,27 @@ export async function fetchOnchainMints(questName: string): Promise<{ mints: Onc
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           query: `
-            query GetQuestMints($questName: String!, $limit: Int!, $offset: Int!) {
-              userQuestProgresses(
+            query GetRevshareEvents($questName: String!, $limit: Int!, $offset: Int!) {
+              revshareEvents(
                 where: {
-                  id_contains: $questName
+                  quest: { name_eq: $questName }
                 }
                 limit: $limit
                 offset: $offset
+                orderBy: timestamp_DESC
               ) {
-                address
-                stepProgresses {
-                  stepNumber
-                  completed
-                  startTimestamp
-                  progressAmount
+                user
+                amount
+                timestamp
+                quest {
+                  name
                 }
+                stepNumber
               }
             }
           `,
           variables: {
-            questName: questName.replace(/\s+/g, "-").toLowerCase(),
+            questName: questName,
             limit,
             offset,
           },
@@ -46,21 +59,18 @@ export async function fetchOnchainMints(questName: string): Promise<{ mints: Onc
 
       const { data } = (await response.json()) as any;
 
-      if (data.userQuestProgresses && data.userQuestProgresses.length > 0) {
-        const mints = data.userQuestProgresses.flatMap((progress: any) =>
-          progress.stepProgresses
-            .filter((step: any) => step.completed)
-            .map((step: any) => {
-              const amount = parseInt(step.progressAmount) || 1;
-              totalMints += amount;
-              return {
-                address: progress.address,
-                timestamp: parseInt(step.startTimestamp) * 1000,
-                questName,
-                amount: amount,
-              };
-            })
-        );
+      if (data.revshareEvents && data.revshareEvents.length > 0) {
+        const mints = data.revshareEvents.map((event: any) => {
+          const amount = parseInt(event.amount) || 1;
+          totalMints += amount;
+          return {
+            address: event.user,
+            timestamp: parseInt(event.timestamp) * 1000, // Convert to milliseconds
+            questName: event.quest.name,
+            amount: amount,
+            stepNumber: event.stepNumber,
+          };
+        });
         allMints = [...allMints, ...mints];
         offset += limit;
       } else {
@@ -75,7 +85,9 @@ export async function fetchOnchainMints(questName: string): Promise<{ mints: Onc
   return { mints: allMints, totalMints };
 }
 
-export async function fetchQuestDetails(questName: string): Promise<Quest | null> {
+export async function fetchQuestDetails(
+  questName: string
+): Promise<Quest | null> {
   const { data, error } = await supabase
     .from("quests")
     .select("*")
@@ -93,7 +105,9 @@ export async function fetchQuestDetails(questName: string): Promise<Quest | null
   return quest;
 }
 
-export async function fetchWebsiteVisits(questName: string): Promise<WebsiteVisit[]> {
+export async function fetchWebsiteVisits(
+  questName: string
+): Promise<WebsiteVisit[]> {
   let allVisits: WebsiteVisit[] = [];
   let hasNextPage = true;
   let after = null;
@@ -165,7 +179,10 @@ export async function fetchWebsiteVisits(questName: string): Promise<WebsiteVisi
   return allVisits;
 }
 
-export async function fetchAllOffchainProgress(quest: Quest, votedFor?: string): Promise<string[]> {
+export async function fetchAllOffchainProgress(
+  quest: Quest,
+  votedFor?: string
+): Promise<string[]> {
   let allRows: string[] = [];
   let from = 0;
   const limit = 10000;

@@ -117,7 +117,9 @@ const main = async () => {
         );
         log(
           "info",
-          `Amount includes price: ${chalk.yellow(amountIncludesPrice ? "Yes" : "No")}`
+          `Amount includes price: ${chalk.yellow(
+            amountIncludesPrice ? "Yes" : "No"
+          )}`
         );
 
         try {
@@ -130,37 +132,47 @@ const main = async () => {
             amountIncludesPrice
           );
 
-          if (onchainOnly) {
-            log("success", "Revenue Share Check Results (On-chain Only):");
-          } else {
-            log("success", "Revenue Share Check Results (Website Visits):");
-          }
-          console.log(
-            chalk.cyan(JSON.stringify(results.websiteResults.summary, null, 2))
-          );
-          log(
-            "info",
-            `Total mint amount: ${results.websiteResults.summary.totalMintAmount}`
-          );
-
           if (!onchainOnly && results.offchainResults) {
-            log("success", "Revenue Share Check Results (Off-chain Progress):");
+            log("info", "Quest Completions Results (Internal Use Only):");
             console.log(
-              chalk.cyan(
-                JSON.stringify(
-                  (results.offchainResults as any).summary,
-                  null,
-                  2
-                )
-              )
+              chalk.gray(JSON.stringify(
+                (results.offchainResults as any).summary,
+                null,
+                2
+              ))
             );
             log(
               "info",
-              `Total mint amount: ${
+              `Total mint amount (off-chain): ${chalk.gray(
                 (results.offchainResults as any).summary.totalMintAmount
-              }`
+              )}`
             );
+            console.log(chalk.yellow("=".repeat(50)));
           }
+
+          console.log(chalk.magenta("=".repeat(50)));
+          if (onchainOnly) {
+            log("success", "📊 Revenue Share Results (Onchain Only) - SHARE THIS:");
+          } else {
+            log("success", "📊 Revenue Share Results (Website Visits) - SHARE THIS:");
+          }
+          console.log(chalk.magenta("=".repeat(50)));
+
+          const shareableResults = {
+            questName,
+            timeWindow,
+            ethPrice,
+            partnershipTier,
+            ...results.websiteResults.summary
+          };
+
+          console.log(chalk.cyan(JSON.stringify(shareableResults, null, 2)));
+          console.log(chalk.magenta("=".repeat(50)));
+          log(
+            "success",
+            `Total mint amount: ${chalk.green(results.websiteResults.summary.totalMintAmount)}`
+          );
+          console.log(chalk.magenta("=".repeat(50)));
 
           // Create output directory if it doesn't exist
           const outputDir = path.join(__dirname, "..", "output");

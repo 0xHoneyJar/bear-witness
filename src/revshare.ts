@@ -42,9 +42,23 @@ export async function checkRevShare(
     questName
   );
 
+  let offchainResults = null;
+  if (!onchainOnly) {
+    offchainResults = await checkOffchainRevShare(
+      onchainMints,
+      questDetails,
+      ethPriceBigInt,
+      fullPartnershipTier,
+      undefined,
+      amountIncludesPrice
+    );
+  }
+
   let websiteResults = null;
   if (!onchainOnly) {
     const websiteVisits = await fetchWebsiteVisits(questName);
+    console.log("websiteResults", onchainMints[0], websiteVisits[0]);
+
     websiteResults = checkRevenueShare(
       onchainMints,
       websiteVisits,
@@ -58,18 +72,6 @@ export async function checkRevShare(
       onchainMints,
       ethPriceBigInt,
       fullPartnershipTier,
-      amountIncludesPrice
-    );
-  }
-
-  let offchainResults = null;
-  if (!onchainOnly) {
-    offchainResults = await checkOffchainRevShare(
-      onchainMints,
-      questDetails,
-      ethPriceBigInt,
-      fullPartnershipTier,
-      undefined,
       amountIncludesPrice
     );
   }
@@ -98,27 +100,43 @@ function checkRevenueShare(
   const tierPercentage = tierInfo ? tierInfo.percentage : 0;
   const matches: any[] = [];
 
+  console.log(`Total mints: ${mints.length}`);
+  console.log(`Total visits: ${visits.length}`);
+  console.log(`Time window: ${timeWindow} minutes`);
+
   for (const mint of mints) {
     const relevantVisits = visits.filter(
       (visit) =>
         visit.address.toLowerCase() === mint.address.toLowerCase() &&
         visit.questName === mint.questName &&
-        BigInt(Math.abs(visit.timestamp - mint.timestamp)) <=
+        BigInt(Math.abs(visit.timestamp - mint.timestamp / 1000)) <=
           BigInt(timeWindow) * 60n * 1000n
     );
 
     if (relevantVisits.length > 0) {
       totalMatches++;
       totalMintAmount += amountIncludesPrice ? 1 : mint.amount;
+      const mintTimestampInSeconds = mint.timestamp / 1000;
+      const timeDifferenceInHours =
+        (mintTimestampInSeconds - relevantVisits[0].timestamp) / 3600;
       matches.push({
         address: mint.address,
         questName: mint.questName,
-        mintTimestamp: mint.timestamp,
+        mintTimestamp: mintTimestampInSeconds,
         mintAmount: amountIncludesPrice ? 1 : mint.amount,
         relevantVisits,
       });
+      console.log(
+        `Mint: ${mint.address}, Timestamp: ${mintTimestampInSeconds}`
+      );
+      console.log(`Relevant visits: ${JSON.stringify(relevantVisits?.[0])}`);
+      console.log(`Time difference: ${timeDifferenceInHours.toFixed(2)} hours`);
+      console.log(`Mint amount: ${amountIncludesPrice ? 1 : mint.amount}`);
     }
   }
+
+  console.log(`Total matches: ${totalMatches}`);
+  console.log(`Total mint amount: ${totalMintAmount}`);
 
   const totalPayout =
     (ethPrice *
@@ -129,6 +147,8 @@ function checkRevenueShare(
   const totalMintAmountEth = amountIncludesPrice
     ? BigInt(totalMintAmount)
     : ethPrice * BigInt(totalMintAmount);
+
+  console.log(`Total payout: ${formatEther(totalPayout)} ETH`);
 
   return {
     summary: {
@@ -217,10 +237,11 @@ function checkOnchainRevenueShare(
   const tierPercentage = tierInfo ? tierInfo.percentage : 0;
 
   const totalPayout = amountIncludesPrice
-    ? (BigInt(Math.round(tierPercentage * 100)) * BigInt(totalMintAmount)) / 10000n
+    ? (BigInt(Math.round(tierPercentage * 100)) * BigInt(totalMintAmount)) /
+      10000n
     : (ethPrice *
-       BigInt(Math.round(tierPercentage * 100)) *
-       BigInt(totalMintAmount)) /
+        BigInt(Math.round(tierPercentage * 100)) *
+        BigInt(totalMintAmount)) /
       10000n;
 
   console.log("totalMintAmount", mints);

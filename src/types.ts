@@ -34,6 +34,7 @@ export interface OnchainMint {
   timestamp: number;
   questName: string;
   amount: number;
+  stepNumber: number; // Add this line
 }
 
 export interface WebsiteVisit {
