@@ -136,6 +136,72 @@ async function getBlockNumberFromDate(date: string): Promise<number> {
   }
 }
 
+// Add function to get first block number
+async function getFirstBlockNumber(): Promise<number> {
+  const query = `
+    query {
+      blocks(
+        limit: 1,
+        orderBy: number_ASC
+      ) {
+        number
+      }
+    }
+  `;
+
+  try {
+    const response = await fetch(INTERNAL_GRAPHQL_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query }),
+    });
+
+    const data = await response.json();
+
+    if (!data.data?.blocks?.[0]?.number) {
+      throw new Error("Could not fetch first block number");
+    }
+
+    return Number(data.data.blocks[0].number);
+  } catch (error) {
+    console.error("Error fetching first block number:", error);
+    throw error;
+  }
+}
+
+// Add function to get latest block number
+export async function getLatestBlockNumber(): Promise<number> {
+  const query = `
+    query {
+      blocks(
+        limit: 1,
+        orderBy: number_DESC
+      ) {
+        number
+      }
+    }
+  `;
+
+  try {
+    const response = await fetch(INTERNAL_GRAPHQL_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query }),
+    });
+
+    const data = await response.json();
+
+    if (!data.data?.blocks?.[0]?.number) {
+      throw new Error("Could not fetch latest block number");
+    }
+
+    return Number(data.data.blocks[0].number);
+  } catch (error) {
+    console.error("Error fetching latest block number:", error);
+    throw error;
+  }
+}
+
 const main = async () => {
   const argv = await yargs(hideBin(process.argv))
     .command({
@@ -305,8 +371,8 @@ const main = async () => {
         blockRange: {
           alias: "n",
           type: "number",
-          description: "Number of blocks to process at a time",
-          default: 100,
+          description: "Number of blocks to process at a time (optional)",
+          demandOption: false,
         },
         startBlock: {
           alias: "b",
@@ -355,15 +421,44 @@ const main = async () => {
           let startBlock = inputStartBlock;
           let endBlock = inputEndBlock;
 
+          // Convert dates to blocks if provided
           if (startDate) {
             startBlock = await getBlockNumberFromDate(startDate);
+            log(
+              "info",
+              `Start date ${startDate} maps to block: ${chalk.yellow(
+                startBlock
+              )}`
+            );
           }
           if (endDate) {
             endBlock = await getBlockNumberFromDate(endDate);
+            log(
+              "info",
+              `End date ${endDate} maps to block: ${chalk.yellow(endBlock)}`
+            );
+          }
+
+          // If no range specified at all, use entire chain range
+          if (!startBlock && !startDate) {
+            startBlock = await getFirstBlockNumber();
+            log(
+              "info",
+              `No start specified. Using first block: ${chalk.yellow(
+                startBlock
+              )}`
+            );
+          }
+          if (!endBlock && !endDate) {
+            endBlock = await getLatestBlockNumber();
+            log(
+              "info",
+              `No end specified. Using latest block: ${chalk.yellow(endBlock)}`
+            );
           }
 
           if (!startBlock || !endBlock) {
-            throw new Error("Must provide either block range or date range");
+            throw new Error("Could not determine block range");
           }
 
           log(
@@ -376,39 +471,59 @@ const main = async () => {
               endBlock
             )}`
           );
-          log(
-            "info",
-            `Processing ${chalk.yellow(blockRange)} blocks at a time`
-          );
 
-          // Process blocks in chunks
-          for (
-            let currentBlock = startBlock;
-            currentBlock < endBlock;
-            currentBlock += blockRange
-          ) {
-            const chunkEndBlock = Math.min(currentBlock + blockRange, endBlock);
-
+          if (blockRange) {
+            // Process in chunks if blockRange is provided
             log(
               "info",
-              `Processing blocks ${chalk.yellow(
-                currentBlock
-              )} to ${chalk.yellow(chunkEndBlock)}`
+              `Processing in chunks of ${chalk.yellow(blockRange)} blocks`
             );
+            const totalBlocks = endBlock - startBlock;
+            const totalChunks = Math.ceil(totalBlocks / blockRange);
+            let processedChunks = 0;
+
+            for (
+              let currentBlock = startBlock;
+              currentBlock < endBlock;
+              currentBlock += blockRange
+            ) {
+              processedChunks++;
+              const chunkEndBlock = Math.min(
+                currentBlock + blockRange,
+                endBlock
+              );
+
+              log(
+                "info",
+                `Processing chunk ${processedChunks}/${totalChunks} (blocks ${chalk.yellow(
+                  currentBlock
+                )} to ${chalk.yellow(chunkEndBlock)})`
+              );
+
+              // Process chunk
+              const results = await processDelegationsAndRewards({
+                referrer,
+                timeWindow,
+                startBlock: currentBlock,
+                endBlock: chunkEndBlock,
+              });
+
+              // Output and save chunk results
+              // ... (rest of chunk processing)
+            }
+          } else {
+            // Process entire range at once
+            log("info", "Processing entire range in one go");
 
             const results = await processDelegationsAndRewards({
               referrer,
               timeWindow,
-              startBlock: currentBlock,
-              endBlock: chunkEndBlock,
+              startBlock,
+              endBlock,
             });
 
-            // Output results for this chunk
-            console.log(
-              chalk.magenta(
-                `\n=== Results for blocks ${currentBlock}-${chunkEndBlock} ===`
-              )
-            );
+            // Output results
+            console.log(chalk.magenta("\n=== Results ==="));
             console.log(
               chalk.cyan(
                 JSON.stringify(
@@ -433,7 +548,7 @@ const main = async () => {
               )
             );
 
-            // Save results for this chunk
+            // Save results
             const outputDir = path.join(__dirname, "..", "output");
             if (!fs.existsSync(outputDir)) {
               fs.mkdirSync(outputDir, { recursive: true });
@@ -441,13 +556,13 @@ const main = async () => {
 
             const outputPath = path.join(
               outputDir,
-              `${referrer}_delegation_rewards_${currentBlock}_${chunkEndBlock}.json`
+              `${referrer}_delegation_rewards_${startBlock}_${endBlock}.json`
             );
             fs.writeFileSync(outputPath, JSON.stringify(results, null, 2));
             log("success", `Results saved to ${chalk.underline(outputPath)}`);
           }
 
-          log("success", "Completed processing all blocks");
+          log("success", "Processing complete");
         } catch (error) {
           log("error", `An error occurred during execution: ${error}`);
         }

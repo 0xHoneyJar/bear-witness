@@ -30,6 +30,7 @@
 import BigNumber from "bignumber.js";
 import fetch from "node-fetch";
 import { formatEther } from "viem";
+import { getLatestBlockNumber } from ".";
 import {
   INTERNAL_GRAPHQL_ENDPOINT,
   IRYS_GRAPHQL_ENDPOINT,
@@ -49,6 +50,7 @@ interface OnchainDelegation {
   validator: string;
   amount: bigint;
   timestamp: number;
+  blockNumber: number; // Add this field
   type: "queue" | "activate" | "drop" | "cancel";
 }
 
@@ -220,8 +222,8 @@ async function fetchOffchainDelegations(
 }
 
 async function fetchOnchainDelegations(
-  startDate?: number,
-  endDate?: number
+  startBlock?: number,
+  endBlock?: number
 ): Promise<OnchainDelegation[]> {
   let allDelegations: OnchainDelegation[] = [];
   let hasMore = true;
@@ -230,50 +232,54 @@ async function fetchOnchainDelegations(
 
   while (hasMore) {
     const query = `
-      query GetDelegationEvents($limit: Int!, $offset: Int!, $startTimestamp: BigInt!, $endTimestamp: BigInt!) {
+      query GetDelegationEvents($limit: Int!, $offset: Int!, $startBlock: BigInt!, $endBlock: BigInt!) {
         queueBoosts(
           limit: $limit
           offset: $offset
-          orderBy: timestamp_ASC
-          where: {timestamp_gte: $startTimestamp, timestamp_lte: $endTimestamp}
+          orderBy: blockNumber_ASC
+          where: {blockNumber_gte: $startBlock, blockNumber_lte: $endBlock}
         ) {
           user
           validator
           amount
           timestamp
+          blockNumber
         }
         activateBoosts(
           limit: $limit
           offset: $offset
-          orderBy: timestamp_ASC
-          where: {timestamp_gte: $startTimestamp, timestamp_lte: $endTimestamp}
+          orderBy: blockNumber_ASC
+          where: {blockNumber_gte: $startBlock, blockNumber_lte: $endBlock}
         ) {
           user
           validator
           amount
           timestamp
+          blockNumber
         }
         dropBoosts(
           limit: $limit
           offset: $offset
-          orderBy: timestamp_ASC
-          where: {timestamp_gte: $startTimestamp, timestamp_lte: $endTimestamp}
+          orderBy: blockNumber_ASC
+          where: {blockNumber_gte: $startBlock, blockNumber_lte: $endBlock}
         ) {
           user
           validator
           amount
           timestamp
+          blockNumber
         }
         cancelBoosts(
           limit: $limit
           offset: $offset
-          orderBy: timestamp_ASC
-          where: {timestamp_gte: $startTimestamp, timestamp_lte: $endTimestamp}
+          orderBy: blockNumber_ASC
+          where: {blockNumber_gte: $startBlock, blockNumber_lte: $endBlock}
         ) {
           user
           validator
           amount
           timestamp
+          blockNumber
         }
       }
     `;
@@ -287,8 +293,8 @@ async function fetchOnchainDelegations(
           variables: {
             limit,
             offset,
-            startTimestamp: startDate || 0,
-            endTimestamp: endDate || Math.floor(Date.now() / 1000),
+            startBlock: startBlock || 0,
+            endBlock: endBlock || (await getLatestBlockNumber()),
           },
         }),
       });
@@ -312,6 +318,7 @@ async function fetchOnchainDelegations(
           ...event,
           amount: BigInt(event.amount),
           timestamp: Number(event.timestamp),
+          blockNumber: Number(event.blockNumber),
           type: "queue",
         })
       );
@@ -322,6 +329,7 @@ async function fetchOnchainDelegations(
         ...event,
         amount: BigInt(event.amount),
         timestamp: Number(event.timestamp),
+        blockNumber: Number(event.blockNumber),
         type: "activate",
       }));
 
@@ -330,6 +338,7 @@ async function fetchOnchainDelegations(
           ...event,
           amount: BigInt(event.amount),
           timestamp: Number(event.timestamp),
+          blockNumber: Number(event.blockNumber),
           type: "drop",
         })
       );
@@ -339,6 +348,7 @@ async function fetchOnchainDelegations(
           ...event,
           amount: BigInt(event.amount),
           timestamp: Number(event.timestamp),
+          blockNumber: Number(event.blockNumber),
           type: "cancel",
         })
       );
