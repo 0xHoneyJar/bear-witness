@@ -8,7 +8,10 @@ The tool provides two main functionalities:
 
 1. RevShare Verification: Compares onchain mints against website visits and off-chain progress.
    - Website visits are tracked on the Irys blockchain, ensuring tamper-proof logging of user activity.
-2. Delegation Referral Check: Analyzes delegation events for a given referrer within a specified date range.
+2. Delegation Referral Check: Analyzes delegation events and calculates reward shares for referrers.
+   - Tracks BGT and HONEY rewards received by the operator
+   - Calculates referrer shares based on their proportion of valid delegations
+   - Verifies delegation lifecycle (queue → activate/cancel → drop)
 
 ## Prerequisites
 
@@ -58,41 +61,65 @@ npm start revshare -- --questName "Your Quest Name" --timeWindow 10 --ethPrice "
 Run the script with the following command:
 
 ```
-npm start delegation -- --referrer "Referrer Address" --startDate "YYYY-MM-DD" --endDate "YYYY-MM-DD"
+npm start delegation -- \
+  --referrer "0xYourReferrerAddress" \
+  --startBlock 123456 \
+  --endBlock 234567 \
+  --timeWindow 10 \
+  [--startDate "2024-03-01"] \
+  [--endDate "2024-03-20"]
 ```
 
-- `--referrer` or `-r`: The address of the referrer (required)
-- `--startDate` or `-s`: The start date for the check (optional, YYYY-MM-DD format)
-- `--endDate` or `-e`: The end date for the check (optional, YYYY-MM-DD format)
+Required parameters:
+
+- `--referrer` or `-r`: The address of the referrer
+- `--startBlock` or `-b`: Start block for rewards calculation
+- `--endBlock` or `-n`: End block for rewards calculation
+
+Optional parameters:
+
+- `--timeWindow` or `-t`: Time window in minutes for matching delegations (default: 10)
+- `--startDate` or `-s`: Start date for delegation check (YYYY-MM-DD format)
+- `--endDate` or `-e`: End date for delegation check (YYYY-MM-DD format)
+
+The delegation check will:
+
+1. Verify delegations by matching off-chain and on-chain events
+2. Track rewards (BGT and HONEY) received by the operator
+3. Calculate referrer shares based on their proportion of valid delegations
+4. Output detailed summaries of:
+   - Delegation statistics
+   - Rewards received
+   - Referrer share calculations
 
 ## Output
 
-The script will output two summaries of the revenue share check in the console:
+### RevShare Output
 
-1. Based on website visits
-2. Based on off-chain progress
+The script outputs revenue share calculations based on website visits and/or off-chain progress.
 
-Each summary shows:
+### Delegation Output
 
-- Quest name
-- Partnership tier
-- Tier percentage
-- Total number of matches
-- Total number of mints
-- Total mint amount in ETH
-- ETH price per item
-- Total payout amount in ETH
+The script generates three sections:
 
-Additionally, a detailed JSON file will be saved in the `output` directory, containing:
+1. Delegation Summary:
 
-1. Website visit results:
-   - The summary information
-   - An array of all matches with website visits
-2. Off-chain progress results:
-   - The summary information
-   - An array of all matches with off-chain progress
+   - Total number of delegations
+   - Total delegated amount
+   - Number of unique delegators
 
-This allows for a comprehensive overview of revenue share calculations based on both on-chain and off-chain data.
+2. Rewards Summary:
+
+   - BGT rewards received
+   - HONEY rewards received
+   - Block range covered
+
+3. Referrer Shares:
+   - Delegation percentage
+   - BGT share (25% of rewards)
+   - HONEY share (25% of rewards)
+
+All results are saved to JSON files in the `output` directory for future reference.
 
 ## License
 

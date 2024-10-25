@@ -1,3 +1,33 @@
+/**
+ * Delegation Lifecycle and Verification Process
+ *
+ * 1. Boost Lifecycle:
+ *    - Queue Boost (pending state)
+ *    - Then either:
+ *      a) Cancel Boost (cancelled state) OR
+ *      b) Activate Boost (active state)
+ *    - If active, can later:
+ *      - Drop Boost (dropped state)
+ *
+ * 2. Verification Steps:
+ *    a) Match offchain queue_boost with onchain queueBoost
+ *    b) Verify the boost wasn't cancelled
+ *    c) Match offchain activate_boost with onchain activateBoost
+ *    d) Verify amounts match between offchain and onchain events
+ *    e) Verify user and validator addresses match
+ *    f) Check all events occur within the specified time window
+ *
+ * 3. Reward Distribution:
+ *    - Track rewards received by operator address per block
+ *    - Calculate referrer shares based on proportion of valid delegations
+ *    - Only consider delegations that are:
+ *      - Successfully queued
+ *      - Not cancelled
+ *      - Successfully activated
+ *      - Not dropped
+ */
+
+import BigNumber from "bignumber.js";
 import fetch from "node-fetch";
 import { formatEther } from "viem";
 import {
@@ -5,14 +35,13 @@ import {
   IRYS_GRAPHQL_ENDPOINT,
   OWNER_ADDRESS,
 } from "./config";
-import BigNumber from "bignumber.js";
 
 interface OffchainDelegation {
   referrer: string;
   address: string;
   timestamp: number;
   quantity: number;
-  type: "queue_boost" | "activate_boost";
+  type: "queue_boost" | "activate_boost" | "drop_boost" | "cancel_boost";
 }
 
 interface OnchainDelegation {
@@ -20,7 +49,7 @@ interface OnchainDelegation {
   validator: string;
   amount: bigint;
   timestamp: number;
-  type: "queue" | "activate";
+  type: "queue" | "activate" | "drop" | "cancel";
 }
 
 interface VerifiedDelegation {
@@ -31,6 +60,27 @@ interface VerifiedDelegation {
   onchainQueueTimestamp: number;
   offchainActivateTimestamp: number;
   onchainActivateTimestamp: number;
+}
+
+interface Distribution {
+  valCoinbase: string;
+  blockNumber: bigint;
+  receiver: string;
+  amount: bigint;
+  timestamp: bigint;
+  rewards: DistributionReward[];
+}
+
+interface DistributionReward {
+  token: string;
+  amount: bigint;
+}
+
+interface RewardSummary {
+  bgt: bigint;
+  honey: bigint;
+  blockStart: number;
+  blockEnd: number;
 }
 
 export async function checkDelegation(
@@ -92,11 +142,11 @@ async function fetchOffchainDelegations(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           query: `
-            query getByOwner($tags: [TagFilter!], $limit: Int!, $after: String) {
+            query getByOwner($tags: [TagFilter!], $first: Int!, $after: String) {
               transactions(
                 owners: ["${OWNER_ADDRESS}"],
                 tags: $tags,
-                limit: $limit,
+                first: $first,
                 after: $after,
                 order: ASC
               ) {
@@ -121,7 +171,7 @@ async function fetchOffchainDelegations(
               { name: "event", values: ["queue_boost", "activate_boost"] },
               { name: "referrer", values: [referrer] },
             ],
-            limit: limit,
+            first: limit,
             after: after,
           },
         }),
@@ -203,6 +253,28 @@ async function fetchOnchainDelegations(
           amount
           timestamp
         }
+        dropBoosts(
+          limit: $limit
+          offset: $offset
+          orderBy: timestamp_ASC
+          where: {timestamp_gte: $startTimestamp, timestamp_lte: $endTimestamp}
+        ) {
+          user
+          validator
+          amount
+          timestamp
+        }
+        cancelBoosts(
+          limit: $limit
+          offset: $offset
+          orderBy: timestamp_ASC
+          where: {timestamp_gte: $startTimestamp, timestamp_lte: $endTimestamp}
+        ) {
+          user
+          validator
+          amount
+          timestamp
+        }
       }
     `;
 
@@ -253,7 +325,30 @@ async function fetchOnchainDelegations(
         type: "activate",
       }));
 
-      const newDelegations = [...queueEvents, ...activateEvents];
+      const dropEvents: OnchainDelegation[] = (data.dropBoosts || []).map(
+        (event: any) => ({
+          ...event,
+          amount: BigInt(event.amount),
+          timestamp: Number(event.timestamp),
+          type: "drop",
+        })
+      );
+
+      const cancelEvents: OnchainDelegation[] = (data.cancelBoosts || []).map(
+        (event: any) => ({
+          ...event,
+          amount: BigInt(event.amount),
+          timestamp: Number(event.timestamp),
+          type: "cancel",
+        })
+      );
+
+      const newDelegations = [
+        ...queueEvents,
+        ...activateEvents,
+        ...dropEvents,
+        ...cancelEvents,
+      ];
       allDelegations = [...allDelegations, ...newDelegations];
 
       if (newDelegations.length < limit * 2) {
@@ -287,24 +382,36 @@ function matchDelegations(
 ): VerifiedDelegation[] {
   let queueEvents = onchainDelegations.filter((e) => e.type === "queue");
   let activateEvents = onchainDelegations.filter((e) => e.type === "activate");
+  let cancelEvents = onchainDelegations.filter((e) => e.type === "cancel");
+  let dropEvents = onchainDelegations.filter((e) => e.type === "drop");
+
   let offchainQueue = offchainDelegations.filter(
     (od) => od.type === "queue_boost"
   );
   let offchainActivate = offchainDelegations.filter(
     (od) => od.type === "activate_boost"
   );
+  let offchainCancel = offchainDelegations.filter(
+    (od) => od.type === "cancel_boost"
+  );
+  let offchainDrop = offchainDelegations.filter(
+    (od) => od.type === "drop_boost"
+  );
 
-  // Sort events by timestamp for more efficient matching
-  queueEvents.sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
-  offchainQueue.sort((a, b) => a.timestamp - b.timestamp);
+  // Sort all events by timestamp
+  [queueEvents, activateEvents, cancelEvents, dropEvents].forEach((events) =>
+    events.sort((a, b) => Number(a.timestamp) - Number(b.timestamp))
+  );
+
+  [offchainQueue, offchainActivate, offchainCancel, offchainDrop].forEach(
+    (events) => events.sort((a, b) => a.timestamp - b.timestamp)
+  );
 
   const verifiedDelegations: VerifiedDelegation[] = [];
 
   for (let i = 0; i < offchainQueue.length; i++) {
     const offchainQueueEvent = offchainQueue[i];
-    if (!offchainQueueEvent.address) {
-      continue;
-    }
+    if (!offchainQueueEvent.address) continue;
 
     const matchingOnchainQueue = findClosestMatchingEvent(
       queueEvents,
@@ -312,7 +419,20 @@ function matchDelegations(
       timeWindow
     );
 
-    if (!matchingOnchainQueue) {
+    if (!matchingOnchainQueue) continue;
+
+    // Check if the queue was cancelled
+    const matchingCancel = findClosestMatchingEvent(
+      cancelEvents,
+      offchainQueueEvent,
+      timeWindow
+    );
+
+    // Skip if this boost was cancelled
+    if (
+      matchingCancel &&
+      matchingCancel.timestamp > matchingOnchainQueue.timestamp
+    ) {
       continue;
     }
 
@@ -468,5 +588,180 @@ function calculateDelegationSummary(verifiedDelegations: VerifiedDelegation[]) {
     totalDelegations,
     totalDelegatedAmount: formatEther(BigInt(totalDelegatedAmount)),
     uniqueDelegators,
+  };
+}
+
+// Add trackRewards implementation
+async function trackRewards(
+  startBlock: number,
+  endBlock: number
+): Promise<RewardSummary> {
+  const query = `
+    query GetDistributions($startBlock: BigInt!, $endBlock: BigInt!) {
+      distributions(
+        where: {
+          blockNumber_gte: $startBlock
+          blockNumber_lte: $endBlock
+          receiver: "${OWNER_ADDRESS}"
+        }
+        orderBy: blockNumber_ASC
+      ) {
+        blockNumber
+        amount
+        rewards {
+          token
+          amount
+        }
+      }
+    }
+  `;
+
+  try {
+    const response = await fetch(INTERNAL_GRAPHQL_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query,
+        variables: {
+          startBlock,
+          endBlock,
+        },
+      }),
+    });
+
+    const { data } = (await response.json()) as any;
+
+    if (!data?.distributions) {
+      throw new Error("Failed to fetch distributions");
+    }
+
+    const summary: RewardSummary = {
+      bgt: BigInt(0),
+      honey: BigInt(0),
+      blockStart: startBlock,
+      blockEnd: endBlock,
+    };
+
+    for (const dist of data.distributions) {
+      for (const reward of dist.rewards) {
+        if (reward.token.toLowerCase() === "bgt")
+          summary.bgt += BigInt(reward.amount);
+        else if (reward.token.toLowerCase() === "honey")
+          summary.honey += BigInt(reward.amount);
+      }
+    }
+
+    return summary;
+  } catch (error) {
+    console.error("Error fetching rewards:", error);
+    throw error;
+  }
+}
+
+interface ReferrerShare {
+  referrer: string;
+  bgtShare: bigint;
+  honeyShare: bigint;
+  delegationPercentage: number;
+}
+
+// Add calculateReferrerShares implementation
+function calculateReferrerShares(
+  verifiedDelegations: VerifiedDelegation[],
+  rewards: RewardSummary
+): ReferrerShare[] {
+  // Group delegations by referrer
+  const referrerDelegations = verifiedDelegations.reduce((acc, delegation) => {
+    const referrer = delegation.user;
+    if (!acc[referrer]) acc[referrer] = [];
+    acc[referrer].push(delegation);
+    return acc;
+  }, {} as Record<string, VerifiedDelegation[]>);
+
+  const totalDelegatedAmount = verifiedDelegations.reduce(
+    (sum, del) => sum + del.amount,
+    0
+  );
+
+  const shares: ReferrerShare[] = [];
+
+  for (const [referrer, delegations] of Object.entries(referrerDelegations)) {
+    const referrerTotal = delegations.reduce((sum, del) => sum + del.amount, 0);
+    const percentage =
+      totalDelegatedAmount > 0 ? referrerTotal / totalDelegatedAmount : 0;
+
+    // Calculate 25% share of rewards based on delegation percentage
+    const bgtShare = BigInt(
+      Math.floor(Number(rewards.bgt) * percentage * 0.25)
+    );
+    const honeyShare = BigInt(
+      Math.floor(Number(rewards.honey) * percentage * 0.25)
+    );
+
+    shares.push({
+      referrer,
+      bgtShare,
+      honeyShare,
+      delegationPercentage: percentage * 100,
+    });
+  }
+
+  return shares;
+}
+
+// Update the main function
+export async function processDelegationsAndRewards({
+  referrer,
+  timeWindow,
+  startBlock,
+  endBlock,
+}: {
+  referrer: string;
+  timeWindow: number;
+  startBlock: number;
+  endBlock: number;
+}) {
+  console.log("\n=== Starting Delegation and Rewards Processing ===\n");
+
+  console.log(`Processing for referrer: ${referrer}`);
+  console.log(`Block range: ${startBlock} to ${endBlock}`);
+  console.log(`Time window: ${timeWindow} minutes`);
+
+  const { summary, verifiedDelegations } = await checkDelegation(
+    referrer,
+    timeWindow
+  );
+
+  console.log("\n=== Delegation Summary ===");
+  console.log(`Total Delegations: ${summary.totalDelegations}`);
+  console.log(`Total Delegated Amount: ${summary.totalDelegatedAmount} BGT`);
+  console.log(`Unique Delegators: ${summary.uniqueDelegators}`);
+
+  console.log("\n=== Fetching Rewards ===");
+  const rewards = await trackRewards(startBlock, endBlock);
+  console.log(`BGT Rewards: ${formatEther(rewards.bgt)} BGT`);
+  console.log(`HONEY Rewards: ${formatEther(rewards.honey)} HONEY`);
+  console.log(`Block Range: ${rewards.blockStart} to ${rewards.blockEnd}`);
+
+  console.log("\n=== Calculating Referrer Shares ===");
+  const referrerShares = calculateReferrerShares(verifiedDelegations, rewards);
+
+  console.log("\nReferrer Share Breakdown:");
+  referrerShares.forEach((share) => {
+    console.log(`\nReferrer: ${share.referrer}`);
+    console.log(
+      `Delegation Percentage: ${share.delegationPercentage.toFixed(2)}%`
+    );
+    console.log(`BGT Share: ${formatEther(share.bgtShare)} BGT`);
+    console.log(`HONEY Share: ${formatEther(share.honeyShare)} HONEY`);
+  });
+
+  console.log("\n=== Processing Complete ===\n");
+
+  return {
+    summary,
+    verifiedDelegations,
+    rewards,
+    referrerShares,
   };
 }
