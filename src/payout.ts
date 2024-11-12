@@ -1,17 +1,21 @@
 import { createPublicClient, createWalletClient, http } from "viem";
 import { berachainTestnetbArtio } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
+import chalk from "chalk";
 
 import { getRevenuesOfValidator } from "./flipside";
 import { checkDelegation } from "./delegation";
 import { TIME_WINDOW, BGT_ADDRESS } from "./config";
+import { supabase } from "./supabase";
+import { log } from "./utils";
 
 export async function payout(
   referrer: string,
   validator: string,
   operator: string,
   startBlock: number,
-  endBlock: number
+  endBlock: number,
+  mock: boolean = false
 ) {
   // =====================================
   //  WEB3 SETUP
@@ -67,6 +71,14 @@ export async function payout(
     startBlock_.timestamp.toString(),
     endBlock_.timestamp.toString()
   );
+  const { data: referrerData, error: referrerError } = await supabase
+    .from("affiliates")
+    .select("recipient")
+    .eq("referrer", referrer)
+    .single();
+  if (referrerError) {
+    throw referrerError;
+  }
   // =====================================
   //  COMPUTATIONS
   // =====================================
@@ -92,6 +104,16 @@ export async function payout(
       BigInt(revenues[incentiveToken].amount.toFixed(4)) *
       BigInt(10 ** revenues[incentiveToken].decimals);
 
+    if (mock) {
+      log(
+        "info",
+        `Mocking payout of token ${chalk.greenBright(
+          incentiveToken
+        )} ${chalk.gray(amountToSend)} `
+      );
+      continue;
+    }
+
     await client.writeContract({
       address: incentiveToken as `0x${string}`,
       abi: [
@@ -107,7 +129,7 @@ export async function payout(
         },
       ] as const,
       functionName: "transfer",
-      args: [referrer as `0x${string}`, amountToSend],
+      args: [referrerData.recipient as `0x${string}`, amountToSend],
     });
   }
 }

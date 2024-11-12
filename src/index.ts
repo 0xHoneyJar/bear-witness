@@ -1,37 +1,18 @@
-import chalk from "chalk";
 import dotenv from "dotenv";
+import chalk from "chalk";
 import fs from "fs";
 import path from "path";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { checkDelegation } from "./delegation";
 import { checkRevShare, PARTNERSHIP_TIERS } from "./revshare";
+import { log } from "./utils";
 
 dotenv.config();
 
 // Load configuration
 const configPath = path.join(__dirname, "..", "config", "default.json");
 const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-
-// Set up colored logging
-function log(level: string, message: string) {
-  const timestamp = new Date().toISOString();
-  switch (level.toLowerCase()) {
-    case "info":
-      console.log(chalk.blue(`[${timestamp}] INFO: ${message}`));
-      break;
-    case "error":
-      console.log(chalk.red(`[${timestamp}] ERROR: ${message}`));
-      break;
-    case "success":
-      console.log(chalk.green(`[${timestamp}] SUCCESS: ${message}`));
-      break;
-    default:
-      console.log(
-        chalk.white(`[${timestamp}] ${level.toUpperCase()}: ${message}`)
-      );
-  }
-}
 
 interface RevShareArgs {
   questName: string;
@@ -135,11 +116,13 @@ const main = async () => {
           if (!onchainOnly && results.offchainResults) {
             log("info", "Quest Completions Results (Internal Use Only):");
             console.log(
-              chalk.gray(JSON.stringify(
-                (results.offchainResults as any).summary,
-                null,
-                2
-              ))
+              chalk.gray(
+                JSON.stringify(
+                  (results.offchainResults as any).summary,
+                  null,
+                  2
+                )
+              )
             );
             log(
               "info",
@@ -152,9 +135,15 @@ const main = async () => {
 
           console.log(chalk.magenta("=".repeat(50)));
           if (onchainOnly) {
-            log("success", "📊 Revenue Share Results (Onchain Only) - SHARE THIS:");
+            log(
+              "success",
+              "📊 Revenue Share Results (Onchain Only) - SHARE THIS:"
+            );
           } else {
-            log("success", "📊 Revenue Share Results (Website Visits) - SHARE THIS:");
+            log(
+              "success",
+              "📊 Revenue Share Results (Website Visits) - SHARE THIS:"
+            );
           }
           console.log(chalk.magenta("=".repeat(50)));
 
@@ -163,14 +152,16 @@ const main = async () => {
             timeWindow,
             ethPrice,
             partnershipTier,
-            ...results.websiteResults.summary
+            ...results.websiteResults.summary,
           };
 
           console.log(chalk.cyan(JSON.stringify(shareableResults, null, 2)));
           console.log(chalk.magenta("=".repeat(50)));
           log(
             "success",
-            `Total mint amount: ${chalk.green(results.websiteResults.summary.totalMintAmount)}`
+            `Total mint amount: ${chalk.green(
+              results.websiteResults.summary.totalMintAmount
+            )}`
           );
           console.log(chalk.magenta("=".repeat(50)));
 
