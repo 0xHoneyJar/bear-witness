@@ -36,7 +36,7 @@ The tool provides two main functionalities:
 
 ## Usage
 
-The tool supports two commands: `revshare` and `delegation`.
+The tool supports two commands: `revshare`, `delegation` and `payout`.
 
 ### RevShare Check
 
@@ -64,6 +64,24 @@ npm start delegation -- --referrer "Referrer Address" --startDate "YYYY-MM-DD" -
 - `--referrer` or `-r`: The address of the referrer (required)
 - `--startDate` or `-s`: The start date for the check (optional, YYYY-MM-DD format)
 - `--endDate` or `-e`: The end date for the check (optional, YYYY-MM-DD format)
+
+### Payout
+
+This pays incentives THJ received to referrers who delegated their BGT to THJ's validator for a given period.
+
+Run the script with the following command:
+
+```
+npm start payout -- --referrer "Referrer Address" --validator "Validator Address" --operator "Operator Address" --startBlock "Start Block Number" --endBlock "End Block Number" [--mock]
+```
+
+- `--referrer` or `-r`: The address of the referrer (required, default: "thj")
+- `--validator` or `-v`: The address of the validator (required)
+- `--operator` or `-o`: The address of the operator (required)
+- `--startBlock` or `-s`: The start block for the payout (required)
+- `--endBlock` or `-e`: The end block for the payout (required)
+- `--mock` or `-m`: Mock the payout without executing transactions (optional)
+
 
 ## Output
 

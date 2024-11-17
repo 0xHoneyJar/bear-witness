@@ -11,8 +11,8 @@ import { log } from "./utils";
 
 export async function payout(
   referrer: string,
-  validator: string,
-  operator: string,
+  validator: `0x${string}`,
+  operator: `0x${string}`,
   startBlock: number,
   endBlock: number,
   mock: boolean = false

@@ -5,6 +5,7 @@ import path from "path";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { checkDelegation } from "./delegation";
+import { payout } from "./payout";
 import { checkRevShare, PARTNERSHIP_TIERS } from "./revshare";
 import { log } from "./utils";
 
@@ -260,6 +261,65 @@ const main = async () => {
           log(
             "success",
             `Full results saved to ${chalk.underline(outputPath)}`
+          );
+        } catch (error) {
+          log("error", `An error occurred during execution: ${error}`);
+        }
+      },
+    })
+    .command({
+      command: "payout",
+      describe: "Payout delegations",
+      builder: {
+        referrer: {
+          alias: "r",
+          type: "string",
+          description: "Address of the referrer",
+          demandOption: true,
+          default: "thj",
+        },
+        validator: {
+          alias: "v",
+          type: "string",
+          description: "Address of the validator",
+          demandOption: true,
+        },
+        operator: {
+          alias: "o",
+          type: "string",
+          description: "Address of the operator",
+          demandOption: true,
+        },
+        startBlock: {
+          alias: "s",
+          type: "string",
+          description: "Start block for the payout",
+          demandOption: true,
+        },
+        endBlock: {
+          alias: "e",
+          type: "string",
+          description: "End block for the payout",
+          demandOption: true,
+        },
+        mock: {
+          alias: "m",
+          type: "boolean",
+          description: "Mock the payout",
+          demandOption: false,
+        },
+      },
+      handler: async (argv) => {
+        const { referrer, validator, operator, startBlock, endBlock, mock } =
+          argv;
+        try {
+          await payout(
+            referrer,
+            validator,
+            operator,
+            startBlock,
+            endBlock,
+            mock
           );
         } catch (error) {
           log("error", `An error occurred during execution: ${error}`);
