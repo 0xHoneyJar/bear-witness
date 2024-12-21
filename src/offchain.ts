@@ -99,7 +99,7 @@ export async function fetchQuestDetails(
     return null;
   }
 
-  const quest = data as Quest;
+  const quest = data as unknown as Quest;
   quest.tracked_steps = getVerifiableStepIndices(quest.steps);
 
   return quest;

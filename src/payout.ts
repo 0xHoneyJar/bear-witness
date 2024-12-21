@@ -6,7 +6,7 @@ import chalk from "chalk";
 import { getRevenuesOfValidator } from "./flipside";
 import { checkDelegation } from "./delegation";
 import { TIME_WINDOW, BGT_ADDRESS } from "./config";
-import { supabase } from "./supabase";
+import { honeySupabase } from "./supabase";
 import { log } from "./utils";
 
 export async function payout(
@@ -71,7 +71,7 @@ export async function payout(
     startBlock_.timestamp.toString(),
     endBlock_.timestamp.toString()
   );
-  const { data: referrerData, error: referrerError } = await supabase
+  const { data: referrerData, error: referrerError } = await honeySupabase
     .from("affiliates")
     .select("recipient")
     .eq("referrer", referrer)
